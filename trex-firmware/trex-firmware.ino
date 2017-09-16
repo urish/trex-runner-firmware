@@ -12,8 +12,8 @@ Servo jumpServo;
 ESP8266WebServer server(80);
 
 #define buttonPin D5
-#define restAngle 120
-#define highAngle 30
+#define restAngle 150
+#define highAngle 20
 
 //Motor shiled I2C Address: 0x30
 //PWM frequency: 1000Hz(1kHz)
@@ -21,6 +21,8 @@ Motor M1(0x30, _MOTOR_A, 1000); //Motor A
 Motor M2(0x30, _MOTOR_B, 1000); //Motor B
 
 // Should this be volatile? it's accessed from web callback
+boolean connected = false;
+volatile boolean playing = false;
 volatile int speedM1 = -50;
 volatile int speedM2 = -50;
 const char* webIndex = "<html><head>"
@@ -37,6 +39,7 @@ const char* webIndex = "<html><head>"
 
 void jump() {
   jumpServo.write(highAngle);
+  Serial.println("JUMP!");
   do {
     delay(200);
   }
@@ -48,16 +51,21 @@ void jump() {
 }
 
 void updateMotors() {
+  if (!playing) {
+    M1.setmotor(_CCW, 0);
+    M2.setmotor(_CW, 0);
+    return;
+  }
   if (speedM1 >= 0 ) {
     M1.setmotor(_CCW, speedM1);
   } else {
     M1.setmotor(_CW, -speedM1);
   }
-  if (speedM2 >= 0 ) {
+/*  if (speedM2 >= 0 ) {
     M2.setmotor(_CCW, speedM2);
   } else {
     M2.setmotor(_CW, -speedM2);
-  }
+  }*/
 }
 
 void gameSpeed(int speed) {
@@ -67,7 +75,8 @@ void gameSpeed(int speed) {
 }
 
 void setup() {
-  Serial.begin(250000);
+  Serial.begin(115200);
+  Serial.println("READY");
 
   pinMode(buttonPin, INPUT_PULLUP);
   jumpServo.attach(D6);
@@ -75,37 +84,33 @@ void setup() {
 
   WiFi.begin(ssid, password);
   Serial.println("");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-
   server.on("/", []() {
     server.send(200, "text/html", webIndex);
   });
 
   int step = 5;
   server.on("/stop", [step]() {
-    gameSpeed(0);
+    playing = false;
+    updateMotors();
     server.send(200, "text/html", webIndex);
   });
   server.on("/25", [step]() {
+    playing = true;
     gameSpeed(25);
     server.send(200, "text/html", webIndex);
   });
   server.on("/50", [step]() {
+    playing = true;
     gameSpeed(50);
     server.send(200, "text/html", webIndex);
   });
   server.on("/75", [step]() {
+    playing = true;
     gameSpeed(75);
     server.send(200, "text/html", webIndex);
   });
   server.on("/100", [step]() {
+    playing = true;
     gameSpeed(100);
     server.send(200, "text/html", webIndex);
   });
@@ -119,8 +124,19 @@ void setup() {
 
 
 void loop() {
+  updateMotors();
+  if (!connected && WiFi.status() == WL_CONNECTED) {
+    Serial.println("Connected!");
+    Serial.println(WiFi.localIP());
+    connected = true;
+  }
   if (!digitalRead(buttonPin)) {
-    jump();
+    if (!playing) {
+      playing = true;
+      delay(500);
+    } else {
+      jump();
+    }
   }
   server.handleClient();
 }
