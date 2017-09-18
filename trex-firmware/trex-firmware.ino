@@ -13,8 +13,11 @@ ESP8266WebServer server(80);
 
 #define buttonPin D5
 #define servoPin D6
-#define restAngle 150
+#define lowAngle 100
 #define highAngle 20
+
+#define jumpSound 1
+#define scoreSound 2
 
 //Motor shiled I2C Address: 0x30
 //PWM frequency: 1000Hz(1kHz)
@@ -23,6 +26,7 @@ Motor M2(0x30, _MOTOR_B, 1000); //Motor B
 
 // Should this be volatile? it's accessed from web callback
 boolean connected = false;
+boolean introSoundPlayed = false;
 volatile boolean playing = false;
 volatile int speedM1 = -50;
 volatile int speedM2 = -50;
@@ -53,24 +57,19 @@ void playerCommand(uint8_t cmd, uint16_t arg) {
 void playSound(uint16_t fileNum, uint8_t volume) {
   if (volume > 0) {
     playerCommand(0x6, 0, volume);
-    delay(10);
+    delay(20);
   }
   playerCommand(0x12, fileNum);
 }
 
 void jump() {
-  playSound(1, 16);
   jumpServo.attach(servoPin);
   jumpServo.write(highAngle);
-  do {
-    delay(200);
-  }
-  while (!digitalRead(buttonPin));
-
-  jumpServo.write(restAngle - 20);
   delay(200);
-  jumpServo.write(restAngle);
-  delay(100);
+  playSound(jumpSound, 30);
+  while (!digitalRead(buttonPin)) {
+    delay(20);
+  }
   jumpServo.detach();
 }
 
@@ -100,14 +99,12 @@ void gameSpeed(int speed) {
 
 void setup() {
   Serial.begin(9600);
-  playSound(1, 16);
-
   Serial.println("READY!");
 
   pinMode(buttonPin, INPUT_PULLUP);
 
   jumpServo.attach(D6);
-  jumpServo.write(restAngle);
+  jumpServo.write(lowAngle);
   delay(100);
   jumpServo.detach();
 
@@ -153,11 +150,18 @@ void setup() {
 
 void loop() {
   updateMotors();
+
+  if (millis() > 2000 && !playing && !introSoundPlayed) {
+    playSound(scoreSound, 16);
+    introSoundPlayed = true;
+  }
+
   if (!connected && WiFi.status() == WL_CONNECTED) {
     Serial.println("Connected!");
     Serial.println(WiFi.localIP());
     connected = true;
   }
+
   if (!digitalRead(buttonPin)) {
     if (!playing) {
       playing = true;
@@ -166,6 +170,7 @@ void loop() {
       jump();
     }
   }
+
   server.handleClient();
 }
 
