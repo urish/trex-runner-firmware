@@ -12,6 +12,7 @@ Servo jumpServo;
 ESP8266WebServer server(80);
 
 #define buttonPin D5
+#define servoPin D6
 #define restAngle 150
 #define highAngle 20
 
@@ -37,9 +38,30 @@ const char* webIndex = "<html><head>"
                        "</html>"
                        ;
 
+void playerCommand(uint8_t cmd, uint8_t arg1, uint8_t arg2) {
+  uint8_t data[10] = {0x7e, 0xff, 0x6, cmd, 0, arg1, arg2, 0, 0, 0xef};
+  int16_t checksum = 0 - data[1] - data[2] - data[3] - data[4] - data[5] - data[6];
+  data[7] = (checksum >> 8) & 0xff;
+  data[8] = checksum & 0xff;
+  Serial.write(data, sizeof(data));
+}
+
+void playerCommand(uint8_t cmd, uint16_t arg) {
+  playerCommand(cmd, arg >> 8, arg & 0xff);
+}
+
+void playSound(uint16_t fileNum, uint8_t volume) {
+  if (volume > 0) {
+    playerCommand(0x6, 0, volume);
+    delay(10);
+  }
+  playerCommand(0x12, fileNum);
+}
+
 void jump() {
+  playSound(1, 16);
+  jumpServo.attach(servoPin);
   jumpServo.write(highAngle);
-  Serial.println("JUMP!");
   do {
     delay(200);
   }
@@ -48,6 +70,8 @@ void jump() {
   jumpServo.write(restAngle - 20);
   delay(200);
   jumpServo.write(restAngle);
+  delay(100);
+  jumpServo.detach();
 }
 
 void updateMotors() {
@@ -61,11 +85,11 @@ void updateMotors() {
   } else {
     M1.setmotor(_CW, -speedM1);
   }
-/*  if (speedM2 >= 0 ) {
-    M2.setmotor(_CCW, speedM2);
-  } else {
-    M2.setmotor(_CW, -speedM2);
-  }*/
+  /*  if (speedM2 >= 0 ) {
+      M2.setmotor(_CCW, speedM2);
+    } else {
+      M2.setmotor(_CW, -speedM2);
+    }*/
 }
 
 void gameSpeed(int speed) {
@@ -75,15 +99,19 @@ void gameSpeed(int speed) {
 }
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("READY");
+  Serial.begin(9600);
+  playSound(1, 16);
+
+  Serial.println("READY!");
 
   pinMode(buttonPin, INPUT_PULLUP);
+
   jumpServo.attach(D6);
   jumpServo.write(restAngle);
+  delay(100);
+  jumpServo.detach();
 
   WiFi.begin(ssid, password);
-  Serial.println("");
   server.on("/", []() {
     server.send(200, "text/html", webIndex);
   });
